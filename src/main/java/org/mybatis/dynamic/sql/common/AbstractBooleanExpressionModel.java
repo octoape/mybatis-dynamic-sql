@@ -1,5 +1,5 @@
 /*
- *    Copyright 2016-2024 the original author or authors.
+ *    Copyright 2016-2025 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -20,16 +20,17 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
+import org.jspecify.annotations.Nullable;
 import org.mybatis.dynamic.sql.AndOrCriteriaGroup;
 import org.mybatis.dynamic.sql.SqlCriterion;
 
 public abstract class AbstractBooleanExpressionModel {
-    private final SqlCriterion initialCriterion;
-    private final List<AndOrCriteriaGroup> subCriteria = new ArrayList<>();
+    private final @Nullable SqlCriterion initialCriterion;
+    private final List<AndOrCriteriaGroup> subCriteria ;
 
-    protected AbstractBooleanExpressionModel(SqlCriterion initialCriterion, List<AndOrCriteriaGroup> subCriteria) {
-        this.initialCriterion = initialCriterion;
-        this.subCriteria.addAll(subCriteria);
+    protected AbstractBooleanExpressionModel(AbstractBuilder<?> builder) {
+        initialCriterion = builder.initialCriterion;
+        subCriteria = builder.subCriteria;
     }
 
     public Optional<SqlCriterion> initialCriterion() {
@@ -38,5 +39,22 @@ public abstract class AbstractBooleanExpressionModel {
 
     public List<AndOrCriteriaGroup> subCriteria() {
         return Collections.unmodifiableList(subCriteria);
+    }
+
+    public abstract static class AbstractBuilder<T extends AbstractBuilder<T>> {
+        private @Nullable SqlCriterion initialCriterion;
+        private final List<AndOrCriteriaGroup> subCriteria = new ArrayList<>();
+
+        public T withInitialCriterion(@Nullable SqlCriterion initialCriterion) {
+            this.initialCriterion = initialCriterion;
+            return getThis();
+        }
+
+        public T withSubCriteria(List<AndOrCriteriaGroup> subCriteria) {
+            this.subCriteria.addAll(subCriteria);
+            return getThis();
+        }
+
+        protected abstract T getThis();
     }
 }

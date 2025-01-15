@@ -1,5 +1,5 @@
 /*
- *    Copyright 2016-2024 the original author or authors.
+ *    Copyright 2016-2025 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -19,11 +19,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mybatis.dynamic.sql.SqlBuilder.insert;
 import static org.mybatis.dynamic.sql.SqlBuilder.insertInto;
-import static org.mybatis.dynamic.sql.SqlBuilder.select;
 import static org.mybatis.dynamic.sql.SqlBuilder.update;
 import static org.mybatis.dynamic.sql.SqlBuilder.value;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.MissingResourceException;
@@ -31,7 +29,7 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.mybatis.dynamic.sql.common.OrderByModel;
-import org.mybatis.dynamic.sql.exception.DynamicSqlException;
+import org.mybatis.dynamic.sql.configuration.StatementConfiguration;
 import org.mybatis.dynamic.sql.exception.InvalidSqlException;
 import org.mybatis.dynamic.sql.insert.BatchInsertModel;
 import org.mybatis.dynamic.sql.insert.GeneralInsertModel;
@@ -40,7 +38,6 @@ import org.mybatis.dynamic.sql.insert.InsertModel;
 import org.mybatis.dynamic.sql.insert.MultiRowInsertModel;
 import org.mybatis.dynamic.sql.render.RenderingContext;
 import org.mybatis.dynamic.sql.render.RenderingStrategies;
-import org.mybatis.dynamic.sql.render.TableAliasCalculator;
 import org.mybatis.dynamic.sql.select.GroupByModel;
 import org.mybatis.dynamic.sql.select.PagingModel;
 import org.mybatis.dynamic.sql.select.QueryExpressionModel;
@@ -49,7 +46,6 @@ import org.mybatis.dynamic.sql.select.join.JoinModel;
 import org.mybatis.dynamic.sql.select.join.JoinSpecification;
 import org.mybatis.dynamic.sql.select.join.JoinType;
 import org.mybatis.dynamic.sql.select.render.FetchFirstPagingModelRenderer;
-import org.mybatis.dynamic.sql.select.render.SelectStatementProvider;
 import org.mybatis.dynamic.sql.update.UpdateModel;
 import org.mybatis.dynamic.sql.util.InternalError;
 import org.mybatis.dynamic.sql.util.Messages;
@@ -114,8 +110,7 @@ class InvalidSQLTest {
 
     @Test
     void testInvalidMultipleInsertStatementNoMappings() {
-        List<TestRow> records = new ArrayList<>();
-        records.add(new TestRow());
+        List<TestRow> records = List.of(new TestRow());
 
         MultiRowInsertModel.Builder<TestRow> builder = new MultiRowInsertModel.Builder<TestRow>()
                 .withRecords(records)
@@ -136,8 +131,7 @@ class InvalidSQLTest {
 
     @Test
     void testInvalidBatchInsertStatementNoMappings() {
-        List<TestRow> records = new ArrayList<>();
-        records.add(new TestRow());
+        List<TestRow> records = List.of(new TestRow());
 
         BatchInsertModel.Builder<TestRow> builder = new BatchInsertModel.Builder<TestRow>()
                 .withRecords(records)
@@ -161,7 +155,8 @@ class InvalidSQLTest {
 
     @Test
     void testInvalidSelectStatementWithoutQueryExpressions() {
-        SelectModel.Builder builder = new SelectModel.Builder();
+        SelectModel.Builder builder =
+                new SelectModel.Builder().withStatementConfiguration(new StatementConfiguration());
 
         assertThatExceptionOfType(InvalidSqlException.class).isThrownBy(builder::build)
                 .withMessage(Messages.getString("ERROR.14"));
@@ -243,15 +238,16 @@ class InvalidSQLTest {
 
         RenderingContext renderingContext = RenderingContext
                 .withRenderingStrategy(RenderingStrategies.MYBATIS3)
+                .withStatementConfiguration(new StatementConfiguration())
                 .build();
 
-        assertThat(pagingModel).isPresent();
+        assertThat(pagingModel).hasValueSatisfying(pm -> {
+            FetchFirstPagingModelRenderer renderer = new FetchFirstPagingModelRenderer(renderingContext, pm);
 
-        FetchFirstPagingModelRenderer renderer = new FetchFirstPagingModelRenderer(renderingContext, pagingModel.get());
-
-        assertThatExceptionOfType(InvalidSqlException.class)
-                .isThrownBy(renderer::render)
-                .withMessage(Messages.getInternalErrorString(InternalError.INTERNAL_ERROR_13));
+            assertThatExceptionOfType(InvalidSqlException.class)
+                    .isThrownBy(renderer::render)
+                    .withMessage(Messages.getInternalErrorString(InternalError.INTERNAL_ERROR_13));
+        });
     }
 
     @Test
@@ -264,23 +260,6 @@ class InvalidSQLTest {
                 .withMessage(Messages.getString("ERROR.38"));
     }
 
-    @Test
-    void testBadColumn() {
-        SelectModel selectModel = select(new BadCount<>()).from(person).build();
-        assertThatExceptionOfType(DynamicSqlException.class)
-                .isThrownBy(() -> selectModel.render(RenderingStrategies.MYBATIS3))
-                .withMessage(Messages.getString("ERROR.36"));
-    }
-
-    @Test
-    void testDeprecatedColumn() {
-        SelectStatementProvider selectStatement = select(new DeprecatedCount<>())
-                .from(person)
-                .build()
-                .render(RenderingStrategies.MYBATIS3);
-        assertThat(selectStatement.getSelectStatement()).isEqualTo("select count(*) from person");
-    }
-
     static class TestRow {
         private Integer id;
 
@@ -290,43 +269,6 @@ class InvalidSQLTest {
 
         public void setId(Integer id) {
             this.id = id;
-        }
-    }
-
-    static class BadCount<T> implements BindableColumn<T> {
-        private String alias;
-
-        @Override
-        public Optional<String> alias() {
-            return Optional.ofNullable(alias);
-        }
-
-        @Override
-        public BindableColumn<T> as(String alias) {
-            BadCount<T> newCount = new BadCount<>();
-            newCount.alias = alias;
-            return newCount;
-        }
-    }
-
-    static class DeprecatedCount<T> implements BindableColumn<T> {
-        private String alias;
-
-        @Override
-        public String renderWithTableAlias(TableAliasCalculator tableAliasCalculator) {
-            return "count(*)";
-        }
-
-        @Override
-        public Optional<String> alias() {
-            return Optional.ofNullable(alias);
-        }
-
-        @Override
-        public BindableColumn<T> as(String alias) {
-            DeprecatedCount<T> newCount = new DeprecatedCount<>();
-            newCount.alias = alias;
-            return newCount;
         }
     }
 }

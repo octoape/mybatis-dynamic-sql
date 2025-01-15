@@ -1,5 +1,5 @@
 /*
- *    Copyright 2016-2024 the original author or authors.
+ *    Copyright 2016-2025 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -15,52 +15,56 @@
  */
 package org.mybatis.dynamic.sql.insert.render;
 
-import static org.mybatis.dynamic.sql.util.StringUtilities.spaceBefore;
+import static org.mybatis.dynamic.sql.util.StringUtilities.spaceAfter;
 
 import java.util.Objects;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
+import org.jspecify.annotations.Nullable;
 import org.mybatis.dynamic.sql.SqlColumn;
 import org.mybatis.dynamic.sql.insert.InsertColumnListModel;
 import org.mybatis.dynamic.sql.insert.InsertSelectModel;
+import org.mybatis.dynamic.sql.render.RenderingContext;
 import org.mybatis.dynamic.sql.render.RenderingStrategy;
-import org.mybatis.dynamic.sql.select.render.SelectStatementProvider;
-import org.mybatis.dynamic.sql.util.StringUtilities;
+import org.mybatis.dynamic.sql.select.render.SubQueryRenderer;
+import org.mybatis.dynamic.sql.util.FragmentAndParameters;
 
 public class InsertSelectRenderer {
 
     private final InsertSelectModel model;
-    private final RenderingStrategy renderingStrategy;
+    private final RenderingContext renderingContext;
 
     private InsertSelectRenderer(Builder builder) {
         model = Objects.requireNonNull(builder.model);
-        renderingStrategy = Objects.requireNonNull(builder.renderingStrategy);
-    }
-
-    public InsertSelectStatementProvider render() {
-        SelectStatementProvider selectStatement = model.selectModel().render(renderingStrategy);
-
-        String statementStart = InsertRenderingUtilities.calculateInsertStatementStart(model.table());
-        Optional<String> columnsPhrase = calculateColumnsPhrase();
-        String renderedSelectStatement = selectStatement.getSelectStatement();
-
-        String insertStatement = statementStart
-                + columnsPhrase.map(StringUtilities::spaceBefore).orElse("") //$NON-NLS-1$
-                + spaceBefore(renderedSelectStatement);
-
-        return DefaultGeneralInsertStatementProvider.withInsertStatement(insertStatement)
-                .withParameters(selectStatement.getParameters())
+        renderingContext = RenderingContext.withRenderingStrategy(Objects.requireNonNull(builder.renderingStrategy))
+                .withStatementConfiguration(model.statementConfiguration())
                 .build();
     }
 
-    private Optional<String> calculateColumnsPhrase() {
-        return model.columnList().map(this::calculateColumnsPhrase);
+    public InsertSelectStatementProvider render() {
+        String statementStart = InsertRenderingUtilities.calculateInsertStatementStart(model.table());
+        String columnsPhrase = calculateColumnsPhrase();
+        String prefix = statementStart + spaceAfter(columnsPhrase);
+
+        FragmentAndParameters fragmentAndParameters = SubQueryRenderer.withSelectModel(model.selectModel())
+                .withRenderingContext(renderingContext)
+                .withPrefix(prefix)
+                .build()
+                .render();
+
+        return DefaultGeneralInsertStatementProvider.withInsertStatement(fragmentAndParameters.fragment())
+                .withParameters(fragmentAndParameters.parameters())
+                .build();
+    }
+
+    private String calculateColumnsPhrase() {
+        return model.columnList().map(this::calculateColumnsPhrase).orElse(""); //$NON-NLS-1$
     }
 
     private String calculateColumnsPhrase(InsertColumnListModel columnList) {
-        return columnList.mapColumns(SqlColumn::name)
-                .collect(Collectors.joining(", ", "(", ")")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        return columnList.columns()
+                .map(SqlColumn::name)
+                .collect(Collectors.joining(", ", " (", ")")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
     }
 
     public static Builder withInsertSelectModel(InsertSelectModel model) {
@@ -68,8 +72,8 @@ public class InsertSelectRenderer {
     }
 
     public static class Builder {
-        private InsertSelectModel model;
-        private RenderingStrategy renderingStrategy;
+        private @Nullable InsertSelectModel model;
+        private @Nullable RenderingStrategy renderingStrategy;
 
         public Builder withInsertSelectModel(InsertSelectModel model) {
             this.model = model;

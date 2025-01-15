@@ -1,5 +1,5 @@
 /*
- *    Copyright 2016-2024 the original author or authors.
+ *    Copyright 2016-2025 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.mybatis.dynamic.sql.insert.render;
 import java.util.Objects;
 import java.util.Optional;
 
+import org.jspecify.annotations.Nullable;
 import org.mybatis.dynamic.sql.insert.GeneralInsertModel;
 import org.mybatis.dynamic.sql.render.RenderingContext;
 import org.mybatis.dynamic.sql.render.RenderingStrategy;
@@ -26,20 +27,21 @@ import org.mybatis.dynamic.sql.util.Validator;
 public class GeneralInsertRenderer {
 
     private final GeneralInsertModel model;
-    private final RenderingStrategy renderingStrategy;
+    private final GeneralInsertValuePhraseVisitor visitor;
 
     private GeneralInsertRenderer(Builder builder) {
         model = Objects.requireNonNull(builder.model);
-        renderingStrategy = Objects.requireNonNull(builder.renderingStrategy);
+        RenderingContext renderingContext = RenderingContext
+                .withRenderingStrategy(Objects.requireNonNull(builder.renderingStrategy))
+                .withStatementConfiguration(model.statementConfiguration())
+                .build();
+        visitor = new GeneralInsertValuePhraseVisitor(renderingContext);
     }
 
     public GeneralInsertStatementProvider render() {
-        RenderingContext renderingContext = RenderingContext.withRenderingStrategy(renderingStrategy).build();
-
-        GeneralInsertValuePhraseVisitor visitor = new GeneralInsertValuePhraseVisitor(renderingContext);
-        FieldAndValueCollector collector = model.mapColumnMappings(m -> m.accept(visitor))
-                .filter(Optional::isPresent)
-                .map(Optional::get)
+        FieldAndValueCollector collector = model.columnMappings()
+                .map(m -> m.accept(visitor))
+                .flatMap(Optional::stream)
                 .collect(FieldAndValueCollector.collect());
 
         Validator.assertFalse(collector.isEmpty(), "ERROR.9"); //$NON-NLS-1$
@@ -56,8 +58,8 @@ public class GeneralInsertRenderer {
     }
 
     public static class Builder {
-        private GeneralInsertModel model;
-        private RenderingStrategy renderingStrategy;
+        private @Nullable GeneralInsertModel model;
+        private @Nullable RenderingStrategy renderingStrategy;
 
         public Builder withInsertModel(GeneralInsertModel model) {
             this.model = model;
