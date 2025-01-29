@@ -1,5 +1,5 @@
 /*
- *    Copyright 2016-2024 the original author or authors.
+ *    Copyright 2016-2025 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -20,9 +20,11 @@ import static org.mybatis.dynamic.sql.util.StringUtilities.spaceBefore;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.jspecify.annotations.Nullable;
 import org.mybatis.dynamic.sql.BindableColumn;
 import org.mybatis.dynamic.sql.SqlColumn;
 import org.mybatis.dynamic.sql.SqlTable;
+import org.mybatis.dynamic.sql.configuration.StatementConfiguration;
 
 /**
  * This class encapsulates all the supporting items related to rendering, and contains many utility methods
@@ -36,13 +38,15 @@ public class RenderingContext {
     private final RenderingStrategy renderingStrategy;
     private final AtomicInteger sequence;
     private final TableAliasCalculator tableAliasCalculator;
-    private final String configuredParameterName;
+    private final @Nullable String configuredParameterName;
     private final String calculatedParameterName;
+    private final StatementConfiguration statementConfiguration;
 
     private RenderingContext(Builder builder) {
         renderingStrategy = Objects.requireNonNull(builder.renderingStrategy);
         configuredParameterName = builder.parameterName;
         tableAliasCalculator = Objects.requireNonNull(builder.tableAliasCalculator);
+        statementConfiguration = Objects.requireNonNull(builder.statementConfiguration);
 
         // reasonable defaults
         sequence = builder.sequence == null ? new AtomicInteger(1) : builder.sequence;
@@ -50,17 +54,8 @@ public class RenderingContext {
                 : builder.parameterName + "." + RenderingStrategy.DEFAULT_PARAMETER_PREFIX;  //$NON-NLS-1$
     }
 
-    public TableAliasCalculator tableAliasCalculator() {
-        // this method can be removed when the renderWithTableAlias method is removed from BasicColumn
-        return tableAliasCalculator;
-    }
-
     private String nextMapKey() {
         return renderingStrategy.formatParameterMapKey(sequence);
-    }
-
-    private String renderedPlaceHolder(String mapKey) {
-        return renderingStrategy.getFormattedJdbcPlaceholder(calculatedParameterName, mapKey);
     }
 
     private <T> String renderedPlaceHolder(String mapKey, BindableColumn<T> column) {
@@ -68,9 +63,22 @@ public class RenderingContext {
                 .getFormattedJdbcPlaceholder(column, calculatedParameterName, mapKey);
     }
 
-    public RenderedParameterInfo calculateParameterInfo() {
-        String mapKey = nextMapKey();
-        return new RenderedParameterInfo(mapKey, renderedPlaceHolder(mapKey));
+    public RenderedParameterInfo calculateFetchFirstRowsParameterInfo() {
+        String mapKey = renderingStrategy.formatParameterMapKeyForFetchFirstRows(sequence);
+        return new RenderedParameterInfo(mapKey,
+                renderingStrategy.getFormattedJdbcPlaceholderForPagingParameters(calculatedParameterName, mapKey));
+    }
+
+    public RenderedParameterInfo calculateLimitParameterInfo() {
+        String mapKey = renderingStrategy.formatParameterMapKeyForLimit(sequence);
+        return new RenderedParameterInfo(mapKey,
+                renderingStrategy.getFormattedJdbcPlaceholderForPagingParameters(calculatedParameterName, mapKey));
+    }
+
+    public RenderedParameterInfo calculateOffsetParameterInfo() {
+        String mapKey = renderingStrategy.formatParameterMapKeyForOffset(sequence);
+        return new RenderedParameterInfo(mapKey,
+                renderingStrategy.getFormattedJdbcPlaceholderForPagingParameters(calculatedParameterName, mapKey));
     }
 
     public <T> RenderedParameterInfo calculateParameterInfo(BindableColumn<T> column) {
@@ -90,8 +98,12 @@ public class RenderingContext {
 
     public String aliasedTableName(SqlTable table) {
         return tableAliasCalculator.aliasForTable(table)
-                .map(a -> table.tableNameAtRuntime() + spaceBefore(a))
-                .orElseGet(table::tableNameAtRuntime);
+                .map(a -> table.tableName() + spaceBefore(a))
+                .orElseGet(table::tableName);
+    }
+
+    public boolean isNonRenderingClauseAllowed() {
+        return statementConfiguration.isNonRenderingWhereClauseAllowed();
     }
 
     /**
@@ -114,6 +126,7 @@ public class RenderingContext {
                 .withSequence(this.sequence)
                 .withParameterName(this.configuredParameterName)
                 .withTableAliasCalculator(tac)
+                .withStatementConfiguration(statementConfiguration)
                 .build();
     }
 
@@ -122,10 +135,11 @@ public class RenderingContext {
     }
 
     public static class Builder {
-        private RenderingStrategy renderingStrategy;
-        private AtomicInteger sequence;
-        private TableAliasCalculator tableAliasCalculator = TableAliasCalculator.empty();
-        private String parameterName;
+        private @Nullable RenderingStrategy renderingStrategy;
+        private @Nullable AtomicInteger sequence;
+        private @Nullable TableAliasCalculator tableAliasCalculator = TableAliasCalculator.empty();
+        private @Nullable String parameterName;
+        private @Nullable StatementConfiguration statementConfiguration;
 
         public Builder withRenderingStrategy(RenderingStrategy renderingStrategy) {
             this.renderingStrategy = renderingStrategy;
@@ -142,8 +156,13 @@ public class RenderingContext {
             return this;
         }
 
-        public Builder withParameterName(String parameterName) {
+        public Builder withParameterName(@Nullable String parameterName) {
             this.parameterName = parameterName;
+            return this;
+        }
+
+        public Builder withStatementConfiguration(StatementConfiguration statementConfiguration) {
+            this.statementConfiguration = statementConfiguration;
             return this;
         }
 

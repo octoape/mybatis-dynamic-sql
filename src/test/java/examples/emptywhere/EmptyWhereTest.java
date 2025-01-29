@@ -1,5 +1,5 @@
 /*
- *    Copyright 2016-2024 the original author or authors.
+ *    Copyright 2016-2025 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -56,12 +56,7 @@ class EmptyWhereTest {
 
         Variation v4 = new Variation(null, null, "");
 
-        List<Variation> answer = new ArrayList<>();
-        answer.add(v1);
-        answer.add(v2);
-        answer.add(v3);
-        answer.add(v4);
-        return answer;
+        return List.of(v1, v2, v3, v4);
     }
 
     static Stream<Variation> whereVariations() {
@@ -175,7 +170,7 @@ class EmptyWhereTest {
         String lName = "Flintstone";
 
         QueryExpressionDSL<SelectModel>.QueryExpressionWhereBuilder builder = select(id, firstName, PersonDynamicSqlSupport.lastName, orderDate)
-                .from(person).join(order).on(person.id, equalTo(order.personId))
+                .from(person).join(order).on(person.id, isEqualTo(order.personId))
                 .where(id, isEqualTo(3));
 
         builder.and(firstName, isEqualTo(fName).filter(Objects::nonNull));
@@ -197,7 +192,7 @@ class EmptyWhereTest {
     @MethodSource("joinWhereVariations")
     void testJoinVariations(Variation variation) {
         QueryExpressionDSL<SelectModel>.QueryExpressionWhereBuilder builder = select(id, firstName, PersonDynamicSqlSupport.lastName, orderDate)
-                .from(person).join(order).on(person.id, equalTo(order.personId))
+                .from(person).join(order).on(person.id, isEqualTo(order.personId))
                 .where();
 
         builder.and(firstName, isEqualTo(variation.firstName).filter(Objects::nonNull));

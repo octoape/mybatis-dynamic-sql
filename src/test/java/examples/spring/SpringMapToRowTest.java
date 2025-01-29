@@ -1,5 +1,5 @@
 /*
- *    Copyright 2016-2024 the original author or authors.
+ *    Copyright 2016-2025 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import static org.mybatis.dynamic.sql.SqlBuilder.insertBatch;
 import static org.mybatis.dynamic.sql.SqlBuilder.insertMultiple;
 import static org.mybatis.dynamic.sql.SqlBuilder.select;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.IntStream;
 
@@ -74,10 +73,7 @@ class SpringMapToRowTest {
 
     @Test
     void testInsertMultiple() {
-        List<Integer> integers = new ArrayList<>();
-        integers.add(1);
-        integers.add(2);
-        integers.add(3);
+        List<Integer> integers = List.of(1, 2, 3);
 
         MultiRowInsertStatementProvider<Integer> insertStatement = insertMultiple(integers)
                 .into(compoundKey)
@@ -102,10 +98,7 @@ class SpringMapToRowTest {
 
     @Test
     void testInsertBatch() {
-        List<Integer> integers = new ArrayList<>();
-        integers.add(1);
-        integers.add(2);
-        integers.add(3);
+        List<Integer> integers = List.of(1, 2, 3);
 
         BatchInsert<Integer> insertStatement = insertBatch(integers)
                 .into(compoundKey)

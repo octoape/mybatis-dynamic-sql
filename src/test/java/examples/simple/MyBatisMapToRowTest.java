@@ -1,5 +1,5 @@
 /*
- *    Copyright 2016-2024 the original author or authors.
+ *    Copyright 2016-2025 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
@@ -109,10 +108,7 @@ class MyBatisMapToRowTest {
         try (SqlSession session = sqlSessionFactory.openSession()) {
             CompoundKeyMapper mapper = session.getMapper(CompoundKeyMapper.class);
 
-            List<Integer> integers = new ArrayList<>();
-            integers.add(1);
-            integers.add(2);
-            integers.add(3);
+            List<Integer> integers = List.of(1, 2, 3);
 
             MultiRowInsertStatementProvider<Integer> insertStatement = insertMultiple(integers)
                     .into(compoundKey)
@@ -142,10 +138,7 @@ class MyBatisMapToRowTest {
         try (SqlSession session = sqlSessionFactory.openSession(ExecutorType.BATCH)) {
             CompoundKeyMapper mapper = session.getMapper(CompoundKeyMapper.class);
 
-            List<Integer> integers = new ArrayList<>();
-            integers.add(1);
-            integers.add(2);
-            integers.add(3);
+            List<Integer> integers = List.of(1, 2, 3);
 
             BatchInsert<Integer> insertStatement = insertBatch(integers)
                     .into(compoundKey)
