@@ -1,5 +1,5 @@
 /*
- *    Copyright 2016-2024 the original author or authors.
+ *    Copyright 2016-2025 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import static org.mybatis.dynamic.sql.util.StringUtilities.spaceBefore;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+import org.jspecify.annotations.Nullable;
 import org.mybatis.dynamic.sql.AbstractColumnComparisonCondition;
 import org.mybatis.dynamic.sql.AbstractListValueCondition;
 import org.mybatis.dynamic.sql.AbstractNoValueCondition;
@@ -30,8 +31,7 @@ import org.mybatis.dynamic.sql.BindableColumn;
 import org.mybatis.dynamic.sql.ConditionVisitor;
 import org.mybatis.dynamic.sql.render.RenderedParameterInfo;
 import org.mybatis.dynamic.sql.render.RenderingContext;
-import org.mybatis.dynamic.sql.select.render.SelectRenderer;
-import org.mybatis.dynamic.sql.select.render.SelectStatementProvider;
+import org.mybatis.dynamic.sql.select.render.SubQueryRenderer;
 import org.mybatis.dynamic.sql.util.FragmentAndParameters;
 import org.mybatis.dynamic.sql.util.FragmentCollector;
 
@@ -47,54 +47,34 @@ public class DefaultConditionVisitor<T> implements ConditionVisitor<T, FragmentA
 
     @Override
     public FragmentAndParameters visit(AbstractListValueCondition<T> condition) {
-        FragmentAndParameters renderedLeftColumn = column.render(renderingContext);
-        FragmentCollector fc = condition.mapValues(this::toFragmentAndParameters).collect(FragmentCollector.collect());
-
-        String joinedFragments =
-                fc.collectFragments(Collectors.joining(",", "(", ")")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-        String finalFragment = condition.overrideRenderedLeftColumn(renderedLeftColumn.fragment())
-                + spaceBefore(condition.operator())
-                + spaceBefore(joinedFragments);
-
-        return FragmentAndParameters
-                .withFragment(finalFragment)
-                .withParameters(fc.parameters())
-                .withParameters(renderedLeftColumn.parameters())
-                .build();
+        return condition.values().map(this::toFragmentAndParameters)
+                .collect(FragmentCollector.collect())
+                .toFragmentAndParameters(Collectors.joining(",", //$NON-NLS-1$
+                        condition.operator() + " (", ")")); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     @Override
     public FragmentAndParameters visit(AbstractNoValueCondition<T> condition) {
-        FragmentAndParameters renderedLeftColumn = column.render(renderingContext);
-        String finalFragment = condition.overrideRenderedLeftColumn(renderedLeftColumn.fragment())
-                + spaceBefore(condition.operator());
-        return FragmentAndParameters.withFragment(finalFragment)
-                .withParameters(renderedLeftColumn.parameters())
-                .build();
+        return FragmentAndParameters.fromFragment(condition.operator());
     }
 
     @Override
     public FragmentAndParameters visit(AbstractSingleValueCondition<T> condition) {
-        FragmentAndParameters renderedLeftColumn = column.render(renderingContext);
         RenderedParameterInfo parameterInfo = renderingContext.calculateParameterInfo(column);
-        String finalFragment = condition.overrideRenderedLeftColumn(renderedLeftColumn.fragment())
-                + spaceBefore(condition.operator())
+        String finalFragment = condition.operator()
                 + spaceBefore(parameterInfo.renderedPlaceHolder());
 
         return FragmentAndParameters.withFragment(finalFragment)
                 .withParameter(parameterInfo.parameterMapKey(), convertValue(condition.value()))
-                .withParameters(renderedLeftColumn.parameters())
                 .build();
     }
 
     @Override
     public FragmentAndParameters visit(AbstractTwoValueCondition<T> condition) {
-        FragmentAndParameters renderedLeftColumn = column.render(renderingContext);
         RenderedParameterInfo parameterInfo1 = renderingContext.calculateParameterInfo(column);
         RenderedParameterInfo parameterInfo2 = renderingContext.calculateParameterInfo(column);
 
-        String finalFragment = condition.overrideRenderedLeftColumn(renderedLeftColumn.fragment())
-                + spaceBefore(condition.operator1())
+        String finalFragment = condition.operator1()
                 + spaceBefore(parameterInfo1.renderedPlaceHolder())
                 + spaceBefore(condition.operator2())
                 + spaceBefore(parameterInfo2.renderedPlaceHolder());
@@ -102,44 +82,26 @@ public class DefaultConditionVisitor<T> implements ConditionVisitor<T, FragmentA
         return FragmentAndParameters.withFragment(finalFragment)
                 .withParameter(parameterInfo1.parameterMapKey(), convertValue(condition.value1()))
                 .withParameter(parameterInfo2.parameterMapKey(), convertValue(condition.value2()))
-                .withParameters(renderedLeftColumn.parameters())
                 .build();
     }
 
     @Override
     public FragmentAndParameters visit(AbstractSubselectCondition<T> condition) {
-        FragmentAndParameters renderedLeftColumn = column.render(renderingContext);
-        SelectStatementProvider selectStatement = SelectRenderer.withSelectModel(condition.selectModel())
+        return SubQueryRenderer.withSelectModel(condition.selectModel())
                 .withRenderingContext(renderingContext)
+                .withPrefix(condition.operator() + " (") //$NON-NLS-1$
+                .withSuffix(")") //$NON-NLS-1$
                 .build()
                 .render();
-
-        String finalFragment = condition.overrideRenderedLeftColumn(renderedLeftColumn.fragment())
-                + spaceBefore(condition.operator())
-                + " (" //$NON-NLS-1$
-                + selectStatement.getSelectStatement()
-                + ")"; //$NON-NLS-1$
-
-        return FragmentAndParameters.withFragment(finalFragment)
-                .withParameters(selectStatement.getParameters())
-                .withParameters(renderedLeftColumn.parameters())
-                .build();
     }
 
     @Override
     public FragmentAndParameters visit(AbstractColumnComparisonCondition<T> condition) {
-        FragmentAndParameters renderedLeftColumn = column.render(renderingContext);
-        FragmentAndParameters renderedRightColumn = condition.rightColumn().render(renderingContext);
-        String finalFragment = condition.overrideRenderedLeftColumn(renderedLeftColumn.fragment())
-                + spaceBefore(condition.operator())
-                + spaceBefore(renderedRightColumn.fragment());
-        return FragmentAndParameters.withFragment(finalFragment)
-                .withParameters(renderedLeftColumn.parameters())
-                .withParameters(renderedRightColumn.parameters())
-                .build();
+        return condition.rightColumn().render(renderingContext)
+                .mapFragment(f -> condition.operator() + spaceBefore(f));
     }
 
-    private Object convertValue(T value) {
+    private @Nullable Object convertValue(T value) {
         return column.convertParameterType(value);
     }
 
@@ -155,8 +117,8 @@ public class DefaultConditionVisitor<T> implements ConditionVisitor<T, FragmentA
     }
 
     public static class Builder<T> {
-        private BindableColumn<T> column;
-        private RenderingContext renderingContext;
+        private @Nullable BindableColumn<T> column;
+        private @Nullable RenderingContext renderingContext;
 
         public Builder<T> withColumn(BindableColumn<T> column) {
             this.column = column;

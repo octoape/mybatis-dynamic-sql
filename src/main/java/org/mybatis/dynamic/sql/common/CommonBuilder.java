@@ -1,5 +1,5 @@
 /*
- *    Copyright 2016-2024 the original author or authors.
+ *    Copyright 2016-2025 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -15,8 +15,10 @@
  */
 package org.mybatis.dynamic.sql.common;
 
+import org.jspecify.annotations.Nullable;
 import org.mybatis.dynamic.sql.SqlTable;
-import org.mybatis.dynamic.sql.where.WhereModel;
+import org.mybatis.dynamic.sql.configuration.StatementConfiguration;
+import org.mybatis.dynamic.sql.where.EmbeddedWhereModel;
 
 /**
  * Builder class shared between the delete and update model builders.
@@ -24,30 +26,35 @@ import org.mybatis.dynamic.sql.where.WhereModel;
  * @param <T> type of the implementing builder
  */
 public abstract class CommonBuilder<T extends CommonBuilder<T>> {
-    private SqlTable table;
-    private String tableAlias;
-    private WhereModel whereModel;
-    private Long limit;
-    private OrderByModel orderByModel;
+    private @Nullable SqlTable table;
+    private @Nullable String tableAlias;
+    private @Nullable EmbeddedWhereModel whereModel;
+    private @Nullable Long limit;
+    private @Nullable OrderByModel orderByModel;
+    private @Nullable StatementConfiguration statementConfiguration;
 
-    public SqlTable table() {
+    public @Nullable SqlTable table() {
         return table;
     }
 
-    public String tableAlias() {
+    public @Nullable String tableAlias() {
         return tableAlias;
     }
 
-    public WhereModel whereModel() {
+    public @Nullable EmbeddedWhereModel whereModel() {
         return whereModel;
     }
 
-    public Long limit() {
+    public @Nullable Long limit() {
         return limit;
     }
 
-    public OrderByModel orderByModel() {
+    public @Nullable OrderByModel orderByModel() {
         return orderByModel;
+    }
+
+    public @Nullable StatementConfiguration statementConfiguration() {
+        return statementConfiguration;
     }
 
     public T withTable(SqlTable table) {
@@ -55,23 +62,28 @@ public abstract class CommonBuilder<T extends CommonBuilder<T>> {
         return getThis();
     }
 
-    public T withTableAlias(String tableAlias) {
+    public T withTableAlias(@Nullable String tableAlias) {
         this.tableAlias = tableAlias;
         return getThis();
     }
 
-    public T withWhereModel(WhereModel whereModel) {
+    public T withWhereModel(@Nullable EmbeddedWhereModel whereModel) {
         this.whereModel = whereModel;
         return getThis();
     }
 
-    public T withLimit(Long limit) {
+    public T withLimit(@Nullable Long limit) {
         this.limit = limit;
         return getThis();
     }
 
-    public T withOrderByModel(OrderByModel orderByModel) {
+    public T withOrderByModel(@Nullable OrderByModel orderByModel) {
         this.orderByModel = orderByModel;
+        return getThis();
+    }
+
+    public T withStatementConfiguration(StatementConfiguration statementConfiguration) {
+        this.statementConfiguration = statementConfiguration;
         return getThis();
     }
 

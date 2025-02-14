@@ -1,5 +1,5 @@
 /*
- *    Copyright 2016-2024 the original author or authors.
+ *    Copyright 2016-2025 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import org.jspecify.annotations.Nullable;
 import org.mybatis.dynamic.sql.common.OrderByModel;
 import org.mybatis.dynamic.sql.common.OrderByRenderer;
 import org.mybatis.dynamic.sql.render.RenderingContext;
@@ -35,17 +36,19 @@ public class MultiSelectRenderer {
     private final RenderingContext renderingContext;
 
     private MultiSelectRenderer(Builder builder) {
+        multiSelectModel = Objects.requireNonNull(builder.multiSelectModel);
         renderingContext = RenderingContext
                 .withRenderingStrategy(Objects.requireNonNull(builder.renderingStrategy))
+                .withStatementConfiguration(multiSelectModel.statementConfiguration())
                 .build();
-        multiSelectModel = Objects.requireNonNull(builder.multiSelectModel);
     }
 
     public SelectStatementProvider render() {
         FragmentAndParameters initialSelect = renderSelect(multiSelectModel.initialSelect());
 
         FragmentCollector fragmentCollector = multiSelectModel
-                .mapUnionQueries(this::renderSelect)
+                .unionQueries()
+                .map(this::renderSelect)
                 .collect(FragmentCollector.collect(initialSelect));
 
         renderOrderBy().ifPresent(fragmentCollector::add);
@@ -62,27 +65,21 @@ public class MultiSelectRenderer {
     }
 
     private FragmentAndParameters renderSelect(SelectModel selectModel) {
-        SelectStatementProvider selectStatement = SelectRenderer.withSelectModel(selectModel)
+        return SubQueryRenderer.withSelectModel(selectModel)
                 .withRenderingContext(renderingContext)
+                .withPrefix("(") //$NON-NLS-1$
+                .withSuffix(")") //$NON-NLS-1$
                 .build()
                 .render();
-
-        return FragmentAndParameters
-                .withFragment("(" + selectStatement.getSelectStatement() + ")") //$NON-NLS-1$ //$NON-NLS-2$
-                .withParameters(selectStatement.getParameters())
-                .build();
     }
 
     private FragmentAndParameters renderSelect(UnionQuery unionQuery) {
-        SelectStatementProvider selectStatement = SelectRenderer.withSelectModel(unionQuery.selectModel())
+        return SubQueryRenderer.withSelectModel(unionQuery.selectModel())
                 .withRenderingContext(renderingContext)
+                .withPrefix(unionQuery.connector() + " (") //$NON-NLS-1$
+                .withSuffix(")") //$NON-NLS-1$
                 .build()
                 .render();
-
-        return FragmentAndParameters.withFragment(
-                unionQuery.connector() + " (" + selectStatement.getSelectStatement() + ")") //$NON-NLS-1$ //$NON-NLS-2$
-                .withParameters(selectStatement.getParameters())
-                .build();
     }
 
     private Optional<FragmentAndParameters> renderOrderBy() {
@@ -90,7 +87,7 @@ public class MultiSelectRenderer {
     }
 
     private FragmentAndParameters renderOrderBy(OrderByModel orderByModel) {
-        return new OrderByRenderer().render(orderByModel);
+        return new OrderByRenderer(renderingContext).render(orderByModel);
     }
 
     private Optional<FragmentAndParameters> renderPagingModel() {
@@ -105,9 +102,13 @@ public class MultiSelectRenderer {
                 .render();
     }
 
+    public static Builder withMultiSelectModel(MultiSelectModel multiSelectModel) {
+        return new Builder().withMultiSelectModel(multiSelectModel);
+    }
+
     public static class Builder {
-        private RenderingStrategy renderingStrategy;
-        private MultiSelectModel multiSelectModel;
+        private @Nullable RenderingStrategy renderingStrategy;
+        private @Nullable MultiSelectModel multiSelectModel;
 
         public Builder withRenderingStrategy(RenderingStrategy renderingStrategy) {
             this.renderingStrategy = renderingStrategy;

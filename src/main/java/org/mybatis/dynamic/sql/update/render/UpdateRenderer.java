@@ -1,5 +1,5 @@
 /*
- *    Copyright 2016-2024 the original author or authors.
+ *    Copyright 2016-2025 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -15,11 +15,11 @@
  */
 package org.mybatis.dynamic.sql.update.render;
 
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import org.jspecify.annotations.Nullable;
 import org.mybatis.dynamic.sql.common.OrderByModel;
 import org.mybatis.dynamic.sql.common.OrderByRenderer;
 import org.mybatis.dynamic.sql.render.ExplicitTableAliasCalculator;
@@ -31,12 +31,12 @@ import org.mybatis.dynamic.sql.update.UpdateModel;
 import org.mybatis.dynamic.sql.util.FragmentAndParameters;
 import org.mybatis.dynamic.sql.util.FragmentCollector;
 import org.mybatis.dynamic.sql.util.Validator;
-import org.mybatis.dynamic.sql.where.WhereModel;
-import org.mybatis.dynamic.sql.where.render.WhereRenderer;
+import org.mybatis.dynamic.sql.where.EmbeddedWhereModel;
 
 public class UpdateRenderer {
     private final UpdateModel updateModel;
     private final RenderingContext renderingContext;
+    private final SetPhraseVisitor visitor;
 
     private UpdateRenderer(Builder builder) {
         updateModel = Objects.requireNonNull(builder.updateModel);
@@ -46,7 +46,9 @@ public class UpdateRenderer {
         renderingContext = RenderingContext
                 .withRenderingStrategy(Objects.requireNonNull(builder.renderingStrategy))
                 .withTableAliasCalculator(tableAliasCalculator)
+                .withStatementConfiguration(updateModel.statementConfiguration())
                 .build();
+        visitor = new SetPhraseVisitor(renderingContext);
     }
 
     public UpdateStatementProvider render() {
@@ -74,37 +76,23 @@ public class UpdateRenderer {
     }
 
     private FragmentAndParameters calculateSetPhrase() {
-        SetPhraseVisitor visitor = new SetPhraseVisitor(renderingContext);
-
-        List<Optional<FragmentAndParameters>> fragmentsAndParameters =
-                updateModel.mapColumnMappings(m -> m.accept(visitor))
-                        .collect(Collectors.toList());
-
-        Validator.assertFalse(fragmentsAndParameters.stream().noneMatch(Optional::isPresent),
-                "ERROR.18"); //$NON-NLS-1$
-
-        FragmentCollector fragmentCollector = fragmentsAndParameters.stream()
-                .filter(Optional::isPresent)
-                .map(Optional::get)
+        FragmentCollector fragmentCollector = updateModel.columnMappings()
+                .map(m -> m.accept(visitor))
+                .flatMap(Optional::stream)
                 .collect(FragmentCollector.collect());
 
-        return toSetPhrase(fragmentCollector);
-    }
+        Validator.assertFalse(fragmentCollector.isEmpty(), "ERROR.18"); //$NON-NLS-1$
 
-    private FragmentAndParameters toSetPhrase(FragmentCollector fragmentCollector) {
         return fragmentCollector.toFragmentAndParameters(
-                Collectors.joining(", ", "set ", "")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                        Collectors.joining(", ", "set ", "")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
     }
 
     private Optional<FragmentAndParameters> calculateWhereClause() {
         return updateModel.whereModel().flatMap(this::renderWhereClause);
     }
 
-    private Optional<FragmentAndParameters> renderWhereClause(WhereModel whereModel) {
-        return WhereRenderer.withWhereModel(whereModel)
-                .withRenderingContext(renderingContext)
-                .build()
-                .render();
+    private Optional<FragmentAndParameters> renderWhereClause(EmbeddedWhereModel whereModel) {
+        return whereModel.render(renderingContext);
     }
 
     private Optional<FragmentAndParameters> calculateLimitClause() {
@@ -112,7 +100,7 @@ public class UpdateRenderer {
     }
 
     private FragmentAndParameters renderLimitClause(Long limit) {
-        RenderedParameterInfo parameterInfo = renderingContext.calculateParameterInfo();
+        RenderedParameterInfo parameterInfo = renderingContext.calculateLimitParameterInfo();
 
         return FragmentAndParameters.withFragment("limit " + parameterInfo.renderedPlaceHolder()) //$NON-NLS-1$
                 .withParameter(parameterInfo.parameterMapKey(), limit)
@@ -124,7 +112,7 @@ public class UpdateRenderer {
     }
 
     private FragmentAndParameters renderOrderByClause(OrderByModel orderByModel) {
-        return new OrderByRenderer().render(orderByModel);
+        return new OrderByRenderer(renderingContext).render(orderByModel);
     }
 
     public static Builder withUpdateModel(UpdateModel updateModel) {
@@ -132,8 +120,8 @@ public class UpdateRenderer {
     }
 
     public static class Builder {
-        private UpdateModel updateModel;
-        private RenderingStrategy renderingStrategy;
+        private @Nullable UpdateModel updateModel;
+        private @Nullable RenderingStrategy renderingStrategy;
 
         public Builder withUpdateModel(UpdateModel updateModel) {
             this.updateModel = updateModel;
